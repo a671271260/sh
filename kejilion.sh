@@ -19407,7 +19407,7 @@ while true; do
 	  22|uptime-kuma)
 		local app_id="22"
 		local docker_name="uptime-kuma"
-		local docker_img="louislam/uptime-kuma:latest"
+		local docker_img="louislam/uptime-kuma:2"
 		local docker_port=8022
 
 
@@ -19418,7 +19418,7 @@ while true; do
 				-p ${docker_port}:3001 \
 				-v /home/docker/uptime-kuma/uptime-kuma-data:/app/data \
 				--restart=always \
-				louislam/uptime-kuma:latest
+				louislam/uptime-kuma:2
 
 		}
 
