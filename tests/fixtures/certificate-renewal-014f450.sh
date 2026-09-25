@@ -1,31 +1,3 @@
-#!/bin/bash
-# KPANEL_WEB_CERTIFICATE_RENEWAL_PROTOCOL_VERSION=1
-[ -d /home/web/certs ] && [ ! -L /home/web/certs ] || exit 1
-[ ! -L /home/web/certs/.kpanel-certificate.lock ] || exit 1
-exec 9>/home/web/certs/.kpanel-certificate.lock || exit 1
-flock -w 30 9 || exit 1
-
-# Remember only a pair previously observed in this host's Certbot lineage.
-# Certbot's legacy delete-before-issue flow may temporarily remove that lineage.
-kpanel_certificate_automatic() (
-    local cert="$1" key="$2" proof="${certs_directory}${yuming}.auto-renewal"
-    local pair temporary=""
-    [ -f "$cert" ] && [ ! -L "$cert" ] && [ -f "$key" ] && [ ! -L "$key" ] || return 1
-    [ ! -L "$proof" ] && { [ ! -e "$proof" ] || { [ -f "$proof" ] && [ "$(stat -c %u "$proof")" = 0 ] && [ "$(stat -c %a "$proof")" = 600 ]; }; } || return 1
-    pair="$(sha256sum "$cert" | awk '{print $1}') $(sha256sum "$key" | awk '{print $1}')"
-    [[ "$pair" =~ ^[a-f0-9]{64}\ [a-f0-9]{64}$ ]] || return 1
-    if cmp -s "/etc/letsencrypt/live/$yuming/fullchain.pem" "$cert" && cmp -s "/etc/letsencrypt/live/$yuming/privkey.pem" "$key"; then
-        umask 077
-        trap 'rm -f -- "$temporary"' EXIT
-        trap 'exit 130' INT
-        trap 'exit 143' TERM
-        temporary=$(mktemp "${proof}.XXXXXX") || return 1
-        printf '%s\n' "$pair" > "$temporary" && chmod 600 "$temporary" && mv -f -- "$temporary" "$proof"
-    else
-        [ -f "$proof" ] && [ "$(wc -c < "$proof")" = 130 ] && [ "$(cat "$proof")" = "$pair" ]
-    fi
-)
-
 # 定义证书存储目录
 certs_directory="/home/web/certs/"
 days_before_expiry=15  # 设置在证书到期前几天触发续签
@@ -34,13 +6,6 @@ days_before_expiry=15  # 设置在证书到期前几天触发续签
 for cert_file in $certs_directory*_cert.pem; do
     # 获取域名
     yuming=$(basename "$cert_file" "_cert.pem")
-    # Custom material is renewed by its owner; the PEM files remain the truth.
-    if [ -e "${certs_directory}${yuming}.custom" ] || [ -L "${certs_directory}${yuming}.custom" ]; then
-        continue
-    fi
-    if ! kpanel_certificate_automatic "$cert_file" "${certs_directory}${yuming}_key.pem"; then
-        continue
-    fi
 
     # 输出正在检查的证书信息
     echo "检查证书过期日期： ${yuming}"
@@ -103,6 +68,20 @@ for cert_file in $certs_directory*_cert.pem; do
             docker run --rm -v /etc/letsencrypt/:/etc/letsencrypt certbot/certbot delete --cert-name "$yuming" -n
 
             docker stop nginx > /dev/null 2>&1
+
+            # if ! iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
+            #     iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+            # fi
+
+            # iptables -P INPUT ACCEPT
+            # iptables -P FORWARD ACCEPT
+            # iptables -P OUTPUT ACCEPT
+            # iptables -F
+
+            # ip6tables -P INPUT ACCEPT
+            # ip6tables -P FORWARD ACCEPT
+            # ip6tables -P OUTPUT ACCEPT
+            # ip6tables -F
 
             docker run --rm -p 80:80 -v /etc/letsencrypt/:/etc/letsencrypt certbot/certbot certonly --standalone -d $yuming --email your@email.com --agree-tos --no-eff-email --force-renewal --key-type ecdsa
 
